@@ -1,0 +1,24 @@
+name: Poll county results
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['scripts/**', '.github/workflows/poll.yml']
+concurrency:
+  group: poll
+  cancel-in-progress: true
+permissions:
+  contents: write
+  actions: write
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/poll.mjs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FL-25 Vote Board</title>
+<style>
+:root{--bg:#f5f7fa;--panel:#fff;--fg:#17202e;--mut:#5b6778;--line:#d9dfe7;--d:#2f6fd0;--r:#cf4339;--o:#98a2b0;--warn:#a85b00;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#10151d;--panel:#18202b;--fg:#eef2f7;--mut:#9aa6b6;--line:#2c3644;--d:#5b93e6;--r:#e8695f;--o:#6d7888;--warn:#e9a64a;color-scheme:dark}}
+html,body{background:var(--bg);color:var(--fg);margin:0;font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+#b{max-width:1040px;margin:0 auto;padding:24px 16px;display:grid;gap:16px}
+h1{font-size:24px;margin:0;font-weight:600}h2{font-size:16px;margin:0;font-weight:600}
+.mut{color:var(--mut);font-size:13px}.warn{color:var(--warn);font-size:13px;font-weight:600}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;display:grid;gap:10px;min-width:0;align-content:start}
+.duel{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}.big{font-size:38px;line-height:1.1;font-weight:600}.right{text-align:right}
+.bar{display:flex;height:16px;border-radius:4px;overflow:hidden;background:var(--line)}.bar i{display:block;height:100%}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}.row{display:flex;justify-content:space-between;gap:10px}
+a{color:inherit}
+</style>
+</head>
+<body>
+<div id="b">
+  <div>
+    <h1>Florida's 25th: Moskowitz vs. Singer</h1>
+    <div id="head">Reading the county results pages</div>
+    <div id="meta" class="mut"></div>
+    <div id="warn" class="warn"></div>
+  </div>
+  <div class="card">
+    <div class="duel">
+      <div><div class="mut">Jared Moskowitz (D, incumbent)</div><div class="big" id="mv">—</div><div id="mp">—</div></div>
+      <div class="right"><div class="mut">Scott Singer (R)</div><div class="big" id="sv">—</div><div id="sp">—</div></div>
+    </div>
+    <div class="bar" id="bar"></div>
+    <div class="mut" id="tot"></div>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="mut">Unofficial counts from the Palm Beach, Broward and Miami-Dade elections offices, covering only votes inside FL-25. Numbers change only when a county posts a new batch, and this page can run about a minute behind the county sites. Early and mail ballots can report before Election Day ballots, so early totals may shift. A lead here is not a race call.</div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Number(n).toLocaleString('en-US');
+const pct = (v, t) => (t ? (v / t * 100).toFixed(1) + '%' : '—');
+const clock = (s) => new Date(s).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', second: '2-digit', timeZone: 'America/New_York'}) + ' ET';
+const setBar = (b, m, s, o) => {
+  const t = m + s + o;
+  b.replaceChildren(...(t ? [[m, '--d'], [o, '--o'], [s, '--r']] : []).map(([v, k]) => {
+    const i = document.createElement('i');
+    i.style.width = (v / t * 100) + '%';
+    i.style.background = `var(${k})`;
+    return i;
+  }));
+};
+const lead = (m, s) => (m + s === 0 ? 'No votes yet' : m === s ? 'Tied' : (m > s ? 'Moskowitz +' : 'Singer +') + fmt(Math.abs(m - s)));
+const line = (label) => {
+  const r = document.createElement('div');
+  r.className = 'row';
+  const a = document.createElement('span');
+  a.className = 'mut';
+  a.textContent = label;
+  const b = document.createElement('span');
+  r.append(a, b);
+  return [r, b];
+};
+const cards = {};
+const card = (c) => {
+  if (cards[c.code]) return cards[c.code];
+  const box = document.createElement('div');
+  box.className = 'card';
+  const h = document.createElement('h2');
+  h.textContent = c.name;
+  const bar = document.createElement('div');
+  bar.className = 'bar';
+  const [r1, m] = line('Moskowitz'), [r2, s] = line('Singer'), [r3, o] = line('Jassenoff and write-in'), [r4, l] = line('Lead'), [r5, sh] = line('Share of district count');
+  const info = document.createElement('div');
+  info.className = 'mut';
+  const upd = document.createElement('div');
+  upd.className = 'mut';
+  box.append(h, bar, r1, r2, r3, r4, r5, info, upd);
+  $('grid').append(box);
+  return (cards[c.code] = {bar, m, s, o, l, sh, info, upd});
+};
+let lastSig = '', lastChange = null, lastOk = null, failed = false;
+const render = (json) => {
+  const list = json.counties || [], ok = list.filter((c) => c.hasData);
+  const M = ok.reduce((a, c) => a + c.moskowitz, 0), S = ok.reduce((a, c) => a + c.singer, 0), O = ok.reduce((a, c) => a + c.jassenoff + c.writein, 0), T = M + S + O;
+  $('mv').textContent = fmt(M); $('sv').textContent = fmt(S); $('mp').textContent = pct(M, T); $('sp').textContent = pct(S, T);
+  setBar($('bar'), M, S, O);
+  $('tot').textContent = fmt(T) + ' votes counted so far' + (ok.length < 3 ? ', from ' + ok.length + ' of 3 counties' : '') + '. Jassenoff and write-in: ' + fmt(O) + '.';
+  $('head').textContent = !T ? 'No votes read yet.' : M === S ? 'Tied in the votes counted so far.' : (M > S ? 'Moskowitz' : 'Singer') + ' leads by ' + fmt(Math.abs(M - S)) + ' votes (' + (Math.abs(M - S) / T * 100).toFixed(1) + ' points) in the votes counted so far.';
+  document.title = T ? `M ${fmt(M)} · S ${fmt(S)} | FL-25` : 'FL-25 Vote Board';
+  list.forEach((c) => {
+    const x = card(c);
+    if (!c.hasData) { x.info.textContent = 'Waiting for data'; return; }
+    const o = c.jassenoff + c.writein, t = c.moskowitz + c.singer + o;
+    x.m.textContent = fmt(c.moskowitz) + ' · ' + pct(c.moskowitz, t);
+    x.s.textContent = fmt(c.singer) + ' · ' + pct(c.singer, t);
+    x.o.textContent = fmt(o) + ' · ' + pct(o, t);
+    x.l.textContent = lead(c.moskowitz, c.singer);
+    x.sh.textContent = pct(t, T);
+    x.info.textContent = c.info || '';
+    x.upd.textContent = c.updated ? 'County page updated ' + clock(c.updated) : '';
+    setBar(x.bar, c.moskowitz, c.singer, o);
+  });
+  const sig = JSON.stringify(ok.map((c) => [c.moskowitz, c.singer, c.jassenoff, c.writein]));
+  if (lastSig && sig !== lastSig) lastChange = Date.now();
+  lastSig = sig;
+  const bad = list.filter((c) => c.error).map((c) => c.name);
+  $('warn').textContent = bad.length ? 'Could not read ' + bad.join(', ') + ' just now, so those numbers may be out of date.' : '';
+};
+const meta = () => {
+  $('meta').textContent = (lastOk ? 'Last read ' + Math.round((Date.now() - lastOk) / 1000) + 's ago' : 'Not read yet') + (lastChange ? ' · Numbers last changed ' + clock(lastChange) : '') + ' · This page checks for new numbers every 5s';
+  if (failed) $('warn').textContent = 'This page could not reach its data just now. Retrying.';
+};
+const poll = async () => {
+  try {
+    const r = await fetch('results.json?t=' + Date.now(), {cache: 'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    render(await r.json());
+    lastOk = Date.now();
+    failed = false;
+  } catch (e) {
+    failed = true;
+  }
+  meta();
+};
+poll();
+setInterval(poll, 5000);
+setInterval(meta, 1000);
+</script>
+</body>
+</html>
